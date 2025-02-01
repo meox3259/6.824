@@ -10,13 +10,22 @@ package main
 // Please do not change this file.
 //
 
-import "6.824/mr"
-import "plugin"
-import "os"
-import "fmt"
-import "log"
+import (
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"plugin"
+
+	"6.824/mr"
+	"github.com/golang/glog"
+)
 
 func main() {
+	flag.Parse()
+	flag.Set("v", "2")
+	defer glog.Flush()
+	
 	if len(os.Args) != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: mrworker xxx.so\n")
 		os.Exit(1)
