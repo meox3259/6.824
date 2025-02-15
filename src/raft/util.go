@@ -1,6 +1,10 @@
 package raft
 
-import "log"
+import (
+	"log"
+	"math/rand"
+	"time"
+)
 
 // Debugging
 const Debug = false
@@ -10,4 +14,12 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 		log.Printf(format, a...)
 	}
 	return
+}
+
+func RandomizeElectionTimer() time.Duration {
+	return time.Millisecond*time.Duration(150) + time.Millisecond*time.Duration(rand.Int()%150)
+}
+
+func RandomizeHeartBeatenTimer() time.Duration {
+	return time.Duration(100) * time.Millisecond
 }
