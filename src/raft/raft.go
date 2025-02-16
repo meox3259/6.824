@@ -311,6 +311,7 @@ func (rf *Raft) ticker() {
 			}
 		}
 		rf.mu.Unlock()
+		time.Sleep(time.Millisecond * 10)
 	}
 }
 
@@ -352,7 +353,7 @@ func (rf *Raft) leaderelection() {
 				if resp.VoteGranted {
 					rf.mu.Lock()
 					vote++
-					if vote == len(rf.peers) / 2 + 1 {
+					if vote >= len(rf.peers) / 2 + 1 {
 						if rf.term == req.Term && rf.state == candidate {
 							rf.state = leader
 							go rf.sendheartbeats(rf.term)
@@ -361,12 +362,9 @@ func (rf *Raft) leaderelection() {
 					rf.mu.Unlock()
 				} else if resp.Term > req.Term {
 					rf.mu.Lock()
-					if rf.state == candidate && rf.term == req.Term {
-						rf.term = resp.Term
-						rf.state = follower
-						rf.votefor = -1
-						vote = 0
-					}
+					rf.term = resp.Term
+					rf.state = follower
+					rf.votefor = -1
 					rf.mu.Unlock()
 				}
 			}
