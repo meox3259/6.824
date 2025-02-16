@@ -20,7 +20,7 @@ package raft
 import (
 	//	"bytes"
 
-	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -68,13 +68,19 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	/*-------2A----------*/
-	term     int
-	state    int
+	term  int
+	state int
 
-	electiontimer time.Timer
-	heartbeattimer time.Timer
+	lastHeartBeaten time.Time
+	lastHeartBeatenTimeOut time.Duration
 
-	votefor      int
+	lastElectionTime time.Time
+	lastElectionTimeOut time.Duration
+
+	lastSendHeartBeaten time.Time
+	lastSendHeartBeatenTimeOut time.Duration
+
+	votefor int
 
 	/*-------2B----------*/
 }
@@ -82,8 +88,6 @@ type Raft struct {
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
 	// Your code here (2A).
 	return rf.term, rf.state == leader
 }
@@ -163,7 +167,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	defer rf.mu.Unlock()
 	reply.Term = rf.term
 	reply.VoteGranted = false
-	fmt.Printf("args.Term = %d rf.term = %d votefor = %d candidateid = %d me = %d\n", args.Term, rf.term, rf.votefor, args.CandidateId, rf.me)
 	if args.Term < rf.term || (args.Term == rf.term && rf.votefor != -1 && rf.votefor != args.CandidateId) {
 		return
 	}
@@ -174,7 +177,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	reply.VoteGranted = true
 	rf.votefor = args.CandidateId
-	rf.electiontimer.Reset(RandomizeElectionTimer())
+	rf.resetElectionTime()
 	rf.state = follower
 }
 
@@ -197,8 +200,9 @@ func (rf *Raft) AppendEntries(req *AppendEntriesRequest, resp *AppendEntriesResp
 		return
 	} else {
 		resp.Success = true
-		rf.electiontimer.Reset(RandomizeElectionTimer())
+		rf.resetHeartBeaten()
 		rf.state = follower
+		rf.term = req.Term
 	}
 }
 
@@ -289,25 +293,45 @@ func (rf *Raft) ticker() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		select {
-		case <-rf.electiontimer.C:
-			rf.mu.Lock()
-			rf.leaderelection()
-			rf.electiontimer.Reset(RandomizeElectionTimer())
-			rf.mu.Unlock()
-		case <-rf.heartbeattimer.C:
-			rf.mu.Lock()
-			if rf.state == leader {
-				rf.sendheartbeats()
-				rf.heartbeattimer.Reset(RandomizeHeartBeatenTimer())
+		rf.mu.Lock()
+		if rf.state == follower {
+			if time.Since(rf.lastHeartBeaten) > rf.lastHeartBeatenTimeOut {
+				rf.state = candidate
 			}
-			rf.mu.Unlock()
 		}
+		if rf.state == candidate {
+			if time.Since(rf.lastElectionTime) > rf.lastElectionTimeOut {
+				go rf.leaderelection()
+				rf.resetElectionTime()
+			}
+		}
+		if rf.state == leader {
+			if time.Since(rf.lastSendHeartBeaten) > rf.lastSendHeartBeatenTimeOut {
+				go rf.sendheartbeats(rf.term)
+			}
+		}
+		rf.mu.Unlock()
 	}
-	fmt.Printf("stop ticker %d\n", rf.me)
+}
+
+func (rf *Raft) resetHeartBeaten() {
+	rf.lastHeartBeaten = time.Now()
+	rf.lastHeartBeatenTimeOut = time.Duration(rand.Intn(200)+200) * time.Millisecond
+}
+
+func (rf *Raft) resetSendHeartBeaten() {
+	rf.lastSendHeartBeaten = time.Now()
+	rf.lastSendHeartBeatenTimeOut = time.Duration(rand.Intn(100)+100) * time.Millisecond
+}
+
+func (rf *Raft) resetElectionTime() {
+	rf.lastElectionTime = time.Now()
+	rf.lastElectionTimeOut = time.Duration(rand.Intn(300) + 300) * time.Millisecond
 }
 
 func (rf *Raft) leaderelection() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	rf.term++
 	rf.votefor = rf.me
 	rf.state = candidate
@@ -318,57 +342,75 @@ func (rf *Raft) leaderelection() {
 		CandidateId: rf.me,
 	}
 
-	fmt.Printf("start vote %d\n", rf.me)
 	for server := 0; server < len(rf.peers); server++ {
 		if server == rf.me {
 			continue
 		}
 		go func(server int) {
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
 			resp := RequestVoteReply{}
 			if rf.sendRequestVote(server, &req, &resp) {
-				fmt.Printf("success send vote %d->%d\n", rf.me, server)
-				if rf.term == req.Term && rf.state == candidate {
-					if resp.VoteGranted {
-						vote++
-						fmt.Printf("success vote %d\n", rf.me)
-						if vote > len(rf.peers)/2 {
+				if resp.VoteGranted {
+					rf.mu.Lock()
+					vote++
+					if vote == len(rf.peers) / 2 + 1 {
+						if rf.term == req.Term && rf.state == candidate {
 							rf.state = leader
-							rf.sendheartbeats()
-						}
-					} else if resp.Term > rf.term {
+							go rf.sendheartbeats(rf.term)
+						}	
+					}
+					rf.mu.Unlock()
+				} else if resp.Term > req.Term {
+					rf.mu.Lock()
+					if rf.state == candidate && rf.term == req.Term {
 						rf.term = resp.Term
 						rf.state = follower
+						rf.votefor = -1
+						vote = 0
 					}
+					rf.mu.Unlock()
 				}
 			}
 		}(server)
 	}
 }
 
-func (rf *Raft) sendheartbeats() {
+func (rf *Raft) sendheartbeats(term int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if term != rf.term {
+		return
+	}
+
+	if rf.state != leader {
+		return
+	}
+
+	req := AppendEntriesRequest{
+		Term:     rf.term,
+		LeaderId: rf.me,
+	}
+
 	for server := 0; server < len(rf.peers); server++ {
 		if server == rf.me {
 			continue
 		}
 		go func(server int) {
+			resp := AppendEntriesResponse{}
+			ok := rf.sendAppendEntries(server, &req, &resp) 
+			if !ok {
+				return
+			}
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
-			req := AppendEntriesRequest{
-				Term:     rf.term,
-				LeaderId: rf.me,
-			}
-			resp := AppendEntriesResponse{}
-			if rf.sendAppendEntries(server, &req, &resp) {
-				if resp.Term > rf.term {
-					rf.term = resp.Term
-					rf.state = follower
-					rf.votefor = -1
-				}
+			if resp.Term > rf.term {
+				rf.term = resp.Term
+				rf.state = follower
+				rf.votefor = -1
 			}
 		}(server)
 	}
+	rf.resetSendHeartBeaten()
 }
 
 // the service or tester wants to create a Raft server. the ports
@@ -390,9 +432,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.term = 0
 	rf.state = follower
-	
-	rf.electiontimer = *time.NewTimer(RandomizeElectionTimer())
-	rf.heartbeattimer = *time.NewTimer(RandomizeHeartBeatenTimer())
+
+	rf.resetElectionTime()
+	rf.resetHeartBeaten()
+	rf.resetSendHeartBeaten()
 	rf.votefor = -1
 
 	// initialize from state persisted before a crash

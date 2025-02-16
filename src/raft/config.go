@@ -360,7 +360,7 @@ func (cfg *config) cleanup() {
 
 // attach server i to the net.
 func (cfg *config) connect(i int) {
-	fmt.Printf("connect(%d)\n", i)
+//	fmt.Printf("connect(%d)\n", i)
 
 	cfg.connected[i] = true
 
@@ -383,7 +383,7 @@ func (cfg *config) connect(i int) {
 
 // detach server i from the net.
 func (cfg *config) disconnect(i int) {
-	fmt.Printf("disconnect(%d)\n", i)
+//	fmt.Printf("disconnect(%d)\n", i)
 
 	cfg.connected[i] = false
 
@@ -436,9 +436,6 @@ func (cfg *config) checkOneLeader() int {
 
 		leaders := make(map[int][]int)
 
-		for i := 0; i < cfg.n; i++ {
-			fmt.Printf("iters = %d i = %d term = %d state = %d killed = %t isleader = %t votefor = %d now = %v\n", iters, i, cfg.rafts[i].term, cfg.rafts[i].state, cfg.rafts[i].killed(), cfg.rafts[i].state == leader, cfg.rafts[i].votefor, time.Now())
-		}
 		for i := 0; i < cfg.n; i++ {
 			if cfg.connected[i] {
 				if term, leader := cfg.rafts[i].GetState(); leader {
