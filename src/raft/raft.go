@@ -56,6 +56,11 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type Entry struct {
+	Term    int
+	Command interface{}
+}
+
 // A Go object implementing a single Raft peer.
 type Raft struct {
 	mu        sync.Mutex          // Lock to protect shared access to this peer's state
@@ -71,18 +76,27 @@ type Raft struct {
 	term  int
 	state int
 
-	lastHeartBeaten time.Time
+	lastHeartBeaten        time.Time
 	lastHeartBeatenTimeOut time.Duration
 
-	lastElectionTime time.Time
+	lastElectionTime    time.Time
 	lastElectionTimeOut time.Duration
 
-	lastSendHeartBeaten time.Time
+	lastSendHeartBeaten        time.Time
 	lastSendHeartBeatenTimeOut time.Duration
 
 	votefor int
 
 	/*-------2B----------*/
+	log []Entry
+
+	commitIndex int
+	lastApplied int
+
+	nextIndex  []int
+	matchIndex []int
+
+	applyCh chan ApplyMsg
 }
 
 // return currentTerm and whether this server
@@ -150,6 +164,9 @@ type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
 	Term        int
 	CandidateId int
+
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 // example RequestVote RPC reply structure.
@@ -184,6 +201,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 type AppendEntriesRequest struct {
 	Term     int
 	LeaderId int
+
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []Entry
+
+	LeaderCommit int
 }
 
 type AppendEntriesResponse struct {
@@ -198,11 +221,26 @@ func (rf *Raft) AppendEntries(req *AppendEntriesRequest, resp *AppendEntriesResp
 	if req.Term < rf.term {
 		resp.Success = false
 		return
-	} else {
+	}
+	if req.isHeartBeat {
 		resp.Success = true
 		rf.resetHeartBeaten()
 		rf.state = follower
 		rf.term = req.Term
+	}
+	if len(rf.log) < req.PrevLogIndex || rf.log[req.PrevLogIndex].Term != req.PrevLogTerm {
+		resp.Success = false
+		return
+	}
+	for i := len(rf.log) - 1; i >= 0; i-- {
+		if rf.log[i].Term == req.Entries[i-req.PrevLogIndex].Term {
+			rf.log = rf.log[:i]
+			break
+		}
+	}
+	rf.log = append(rf.log, req.Entries...)
+	if req.LeaderCommit > rf.commitIndex {
+		rf.commitIndex = Min(len(rf.log)-1, req.LeaderCommit)
 	}
 }
 
@@ -287,6 +325,16 @@ func (rf *Raft) killed() bool {
 
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
+func (rf *Raft) applier() {
+	for rf.killed() == false {
+		select {
+		case entry := <-rf.applyCh:
+			index := entry.CommandIndex
+
+		}
+	}
+}
+
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
 
@@ -327,7 +375,7 @@ func (rf *Raft) resetSendHeartBeaten() {
 
 func (rf *Raft) resetElectionTime() {
 	rf.lastElectionTime = time.Now()
-	rf.lastElectionTimeOut = time.Duration(rand.Intn(300) + 300) * time.Millisecond
+	rf.lastElectionTimeOut = time.Duration(rand.Intn(300)+300) * time.Millisecond
 }
 
 func (rf *Raft) leaderelection() {
@@ -353,11 +401,11 @@ func (rf *Raft) leaderelection() {
 				if resp.VoteGranted {
 					rf.mu.Lock()
 					vote++
-					if vote >= len(rf.peers) / 2 + 1 {
+					if vote >= len(rf.peers)/2+1 {
 						if rf.term == req.Term && rf.state == candidate {
 							rf.state = leader
 							go rf.sendheartbeats(rf.term)
-						}	
+						}
 					}
 					rf.mu.Unlock()
 				} else if resp.Term > req.Term {
@@ -395,7 +443,7 @@ func (rf *Raft) sendheartbeats(term int) {
 		}
 		go func(server int) {
 			resp := AppendEntriesResponse{}
-			ok := rf.sendAppendEntries(server, &req, &resp) 
+			ok := rf.sendAppendEntries(server, &req, &resp)
 			if !ok {
 				return
 			}
@@ -436,11 +484,18 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.resetSendHeartBeaten()
 	rf.votefor = -1
 
+	rf.commitIndex = 0
+	rf.lastApplied = 0
+
+	rf.applyCh = applyCh
+
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
+
+	go rf.applier()
 
 	return rf
 }

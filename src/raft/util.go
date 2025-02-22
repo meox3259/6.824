@@ -23,3 +23,10 @@ func RandomizeElectionTimer() time.Duration {
 func RandomizeHeartBeatenTimer() time.Duration {
 	return time.Duration(100) * time.Millisecond
 }
+
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
