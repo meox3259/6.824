@@ -174,6 +174,9 @@ func (cfg *config) applier(i int, applyCh chan ApplyMsg) {
 				err_msg = fmt.Sprintf("server %v apply out of order %v", i, m.CommandIndex)
 			}
 			if err_msg != "" {
+				for server := 0; server < cfg.n; server++ {
+					fmt.Printf("server %d log = %v\n", server, cfg.logs[server])
+				}
 				log.Fatalf("222 apply error: %v", err_msg)
 				cfg.applyErr[i] = err_msg
 				// keep reading after error so that Raft doesn't block
@@ -360,7 +363,7 @@ func (cfg *config) cleanup() {
 
 // attach server i to the net.
 func (cfg *config) connect(i int) {
-//	fmt.Printf("connect(%d)\n", i)
+	//	fmt.Printf("connect(%d)\n", i)
 
 	cfg.connected[i] = true
 
@@ -383,7 +386,7 @@ func (cfg *config) connect(i int) {
 
 // detach server i from the net.
 func (cfg *config) disconnect(i int) {
-//	fmt.Printf("disconnect(%d)\n", i)
+	//	fmt.Printf("disconnect(%d)\n", i)
 
 	cfg.connected[i] = false
 
@@ -498,7 +501,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 	for i := 0; i < len(cfg.rafts); i++ {
 		rf := cfg.rafts[i]
 		rf.mu.Lock()
-	//	fmt.Printf("nCommitted me = %d index = %d log = %v commitindex = %d lastApplied = %d\n", rf.me, index, rf.log, rf.commitIndex, rf.lastApplied)
+		//	fmt.Printf("nCommitted me = %d index = %d log = %v commitindex = %d lastApplied = %d\n", rf.me, index, rf.log, rf.commitIndex, rf.lastApplied)
 		rf.mu.Unlock()
 	}
 	for i := 0; i < len(cfg.rafts); i++ {
@@ -510,7 +513,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 		cmd1, ok := cfg.logs[i][index]
 		cfg.mu.Unlock()
 		if ok {
-		//	fmt.Printf("hhhhhhhhhhhhhh i = %d cmd1 = %v ok = %v\n", i, cmd1, ok)
+			//	fmt.Printf("hhhhhhhhhhhhhh i = %d cmd1 = %v ok = %v\n", i, cmd1, ok)
 			if count > 0 && cmd != cmd1 {
 				cfg.t.Fatalf("committed values do not match: index %v, %v, %v",
 					index, cmd, cmd1)
@@ -601,7 +604,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
-		//		fmt.Printf("nd = %d cmd1 = %v cmd = %v index = %d expectedServers = %d\n", nd, cmd1, cmd, index, expectedServers)
+				//		fmt.Printf("nd = %d cmd1 = %v cmd = %v index = %d expectedServers = %d\n", nd, cmd1, cmd, index, expectedServers)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {
@@ -614,7 +617,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			for i := 0; i < len(cfg.rafts); i++ {
 				rf := cfg.rafts[i]
 				rf.mu.Lock()
-			//	fmt.Printf("before end me = %d log = %v\n", rf.me, rf.log)
+				//	fmt.Printf("before end me = %d log = %v\n", rf.me, rf.log)
 				rf.mu.Unlock()
 			}
 			if retry == false {

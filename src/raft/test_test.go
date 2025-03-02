@@ -138,7 +138,7 @@ func TestBasicAgree2B(t *testing.T) {
 		if nd > 0 {
 			t.Fatalf("some have committed before Start()")
 		}
-		
+
 		xindex := cfg.one(index*100, servers, false)
 		if xindex != index {
 			t.Fatalf("got index %v but expected %v", xindex, index)
@@ -467,27 +467,39 @@ func TestRejoin2B(t *testing.T) {
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect(leader1)
 
+	fmt.Printf("leader1 = %d\n", leader1)
+	fmt.Printf("pos1\n")
 	// make old leader try to agree on some entries
 	cfg.rafts[leader1].Start(102)
 	cfg.rafts[leader1].Start(103)
 	cfg.rafts[leader1].Start(104)
 
+	fmt.Printf("pos2\n")
 	// new leader commits, also for index=2
 	cfg.one(103, 2, true)
 
+	fmt.Printf("pos3\n")
 	// new leader network failure
 	leader2 := cfg.checkOneLeader()
 	cfg.disconnect(leader2)
 
+	fmt.Printf("leader2 = %d\n", leader2)
+
+	fmt.Printf("pos4\n")
 	// old leader connected again
 	cfg.connect(leader1)
 
+	fmt.Printf("pos5\n")
 	cfg.one(104, 2, true)
 
+	fmt.Printf("pos6\n")
 	// all together now
 	cfg.connect(leader2)
 
+	fmt.Printf("pos7\n")
 	cfg.one(105, servers, true)
+
+	fmt.Printf("pos8\n")
 
 	cfg.end()
 }

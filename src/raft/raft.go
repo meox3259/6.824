@@ -20,7 +20,6 @@ package raft
 import (
 	//	"bytes"
 
-	"fmt"
 	"math/rand"
 	"sort"
 	"sync"
@@ -90,7 +89,7 @@ type Raft struct {
 	lastAppendEntries        time.Time
 	lastAppendEntriesTimeOut time.Duration
 
-	lastAppliedTime        time.Time
+	lastAppliedTime    time.Time
 	lastAppliedTimeOut time.Duration
 
 	votefor int
@@ -235,26 +234,19 @@ func (rf *Raft) AppendEntries(req *AppendEntriesRequest, resp *AppendEntriesResp
 		rf.resetHeartBeaten()
 		rf.state = follower
 		rf.term = req.Term
-		if req.LeaderCommit > rf.commitIndex {
-			rf.commitIndex = Min(len(rf.log)-1, req.LeaderCommit)
-	//		fmt.Printf("me = %d commitIndex = %d len - 1 = %d req.LeaderCommit = %d\n", rf.me, rf.commitIndex, len(rf.log)-1, req.LeaderCommit)
-		}
+		return
 	}
 	if len(rf.log) <= req.PrevLogIndex || rf.log[req.PrevLogIndex].Term != req.PrevLogTerm {
 		resp.Success = false
 		return
 	}
-	resp.Success = true
-	if len(req.Entries) == 0 {
-		return
-	}
-//	fmt.Printf("append me = %d Prevlog = %v req.log = %v\n", rf.me, rf.log[:req.PrevLogIndex + 1], req.Entries)
-//	fmt.Printf("me = %d req.PrevLogIndex = %d, req.PrevLogTerm = %d len(Entries) = %d\n", rf.me, req.PrevLogIndex, req.PrevLogTerm, len(req.Entries))
+	//	fmt.Printf("append me = %d Prevlog = %v req.log = %v\n", rf.me, rf.log[:req.PrevLogIndex + 1], req.Entries)
+	//	fmt.Printf("me = %d req.PrevLogIndex = %d, req.PrevLogTerm = %d len(Entries) = %d\n", rf.me, req.PrevLogIndex, req.PrevLogTerm, len(req.Entries))
 	rf.log = append(rf.log[:req.PrevLogIndex+1], req.Entries...)
-//	fmt.Printf("curlog = %v\n", rf.log)
+	//	fmt.Printf("curlog = %v\n", rf.log)
 	if req.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = Min(len(rf.log)-1, req.LeaderCommit)
-//		fmt.Printf("me = %d commitIndex = %d len - 1 = %d req.LeaderCommit = %d\n", rf.me, rf.commitIndex, len(rf.log)-1, req.LeaderCommit)
+		//		fmt.Printf("me = %d commitIndex = %d len - 1 = %d req.LeaderCommit = %d\n", rf.me, rf.commitIndex, len(rf.log)-1, req.LeaderCommit)
 	}
 }
 
@@ -273,7 +265,7 @@ func (rf *Raft) commit() {
 	match := make([]int, 0)
 	for server := 0; server < len(rf.peers); server++ {
 		match = append(match, rf.matchIndex[server])
-	//	fmt.Printf("rf.match[%d] = %d me = %d\n", server, rf.matchIndex[server], rf.me)
+		//	fmt.Printf("rf.match[%d] = %d me = %d\n", server, rf.matchIndex[server], rf.me)
 	}
 	sort.Ints(match)
 	pivot := match[len(rf.peers)/2]
@@ -287,15 +279,16 @@ func (rf *Raft) replicate() {
 		if server == rf.me {
 			continue
 		}
-		fmt.Printf("nextIndex[%d] = %d len = %d\n", server, rf.nextIndex[server], len(rf.log))
+		//	fmt.Printf("nextIndex[%d] = %d len = %d\n", server, rf.nextIndex[server], len(rf.log))
 		for i := 0; i < len(rf.log); i++ {
-			fmt.Printf("me = %d log[%d] = %v\n", rf.me, i, rf.log[i])
+			//			fmt.Printf("me = %d log[%d] = %v\n", rf.me, i, rf.log[i])
 		}
 		go func(server int) {
+			//		fmt.Printf("rf.nextIndex[%d] = %d len = %d\n", server, rf.nextIndex[server], len(rf.log))
 			req := AppendEntriesRequest{
-				Term: rf.term,
-				LeaderId: rf.me,
-				PrevLogIndex: rf.nextIndex[server]-1,
+				Term:         rf.term,
+				LeaderId:     rf.me,
+				PrevLogIndex: rf.nextIndex[server] - 1,
 				PrevLogTerm:  rf.log[rf.nextIndex[server]-1].Term,
 				Entries:      rf.log[rf.nextIndex[server]:], // copy the entries to the next index
 				LeaderCommit: rf.commitIndex,
@@ -308,7 +301,7 @@ func (rf *Raft) replicate() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			if !resp.Success {
-				if resp.Term > rf.term {
+				if resp.Term > req.Term {
 					rf.term = resp.Term
 					rf.state = follower
 					rf.votefor = -1
@@ -372,7 +365,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
 	isLeader := true
-	
+
 	// Your code here (2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -380,7 +373,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return -1, -1, rf.state == leader
 	}
 	entry := Entry{
-		Term: rf.term,
+		Term:    rf.term,
 		Command: command,
 	}
 	rf.log = append(rf.log, entry)
@@ -415,23 +408,22 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
 func (rf *Raft) applier() {
 	for rf.killed() == false {
 		if time.Since(rf.lastAppliedTime) > rf.lastAppliedTimeOut {
 			rf.mu.Lock()
-		//	fmt.Printf("me = %d lastApplied = %d, commitIndex = %d len = %d\n", rf.me, rf.lastApplied, rf.commitIndex, len(rf.log))
+			//	fmt.Printf("me = %d lastApplied = %d, commitIndex = %d len = %d\n", rf.me, rf.lastApplied, rf.commitIndex, len(rf.log))
 			for i := rf.lastApplied; i <= rf.commitIndex; i++ {
 				msg := ApplyMsg{
 					CommandValid: true,
 					CommandIndex: i,
-					Command: rf.log[i].Command,
+					Command:      rf.log[i].Command,
 				}
 				rf.applyCh <- msg
 				rf.lastApplied = i
-			}	
+			}
 			rf.resetAppliedTime()
 			rf.mu.Unlock()
 		}
@@ -533,6 +525,7 @@ func (rf *Raft) leaderelection() {
 								rf.matchIndex[server] = len(rf.log) - 1
 							}
 							go rf.sendheartbeats(rf.term)
+							go rf.replicate()
 						}
 					}
 					rf.mu.Unlock()
@@ -561,8 +554,8 @@ func (rf *Raft) sendheartbeats(term int) {
 	}
 
 	req := AppendEntriesRequest{
-		Term:     rf.term,
-		LeaderId: rf.me,
+		Term:         rf.term,
+		LeaderId:     rf.me,
 		Entries:      []Entry{}, // copy the entries to the next index
 		LeaderCommit: rf.commitIndex,
 	}
