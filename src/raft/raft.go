@@ -390,7 +390,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.log = append(rf.log, entry)
 	rf.matchIndex[rf.me] = len(rf.log) - 1
 	rf.nextIndex[rf.me] = len(rf.log)
-	go rf.replicate()
 
 	index = len(rf.log) - 1
 	term = rf.term
@@ -475,12 +474,12 @@ func (rf *Raft) ticker() {
 
 func (rf *Raft) resetHeartBeaten() {
 	rf.lastHeartBeaten = time.Now()
-	rf.lastHeartBeatenTimeOut = time.Duration(rand.Intn(200)+200) * time.Millisecond
+	rf.lastHeartBeatenTimeOut = time.Duration(rand.Intn(150)+200) * time.Millisecond
 }
 
 func (rf *Raft) resetSendHeartBeaten() {
 	rf.lastSendHeartBeaten = time.Now()
-	rf.lastSendHeartBeatenTimeOut = time.Duration(rand.Intn(100)+100) * time.Millisecond
+	rf.lastSendHeartBeatenTimeOut = time.Duration(100) * time.Millisecond
 }
 
 func (rf *Raft) resetElectionTime() {
@@ -490,12 +489,12 @@ func (rf *Raft) resetElectionTime() {
 
 func (rf *Raft) resetAppendEntriesTime() {
 	rf.lastAppendEntries = time.Now()
-	rf.lastAppendEntriesTimeOut = time.Duration(rand.Intn(100)+100) * time.Millisecond // to modify
+	rf.lastAppendEntriesTimeOut = time.Duration(100) * time.Millisecond // to modify
 }
 
 func (rf *Raft) resetAppliedTime() {
 	rf.lastAppliedTime = time.Now()
-	rf.lastAppliedTimeOut = time.Duration(rand.Intn(100)+100) * time.Millisecond
+	rf.lastAppliedTimeOut = time.Duration(100) * time.Millisecond
 }
 
 func (rf *Raft) leaderelection() {
@@ -531,7 +530,6 @@ func (rf *Raft) leaderelection() {
 								rf.matchIndex[server] = len(rf.log) - 1
 							}
 							go rf.sendheartbeats(rf.term)
-							go rf.replicate()
 						}
 					}
 					rf.mu.Unlock()

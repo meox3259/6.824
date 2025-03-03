@@ -148,8 +148,10 @@ func TestBasicAgree2B(t *testing.T) {
 	cfg.end()
 }
 
+//
 // check, based on counting bytes of RPCs, that
 // each command is sent to each peer just once.
+//
 func TestRPCBytes2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
@@ -181,7 +183,9 @@ func TestRPCBytes2B(t *testing.T) {
 	cfg.end()
 }
 
+//
 // test just failure of followers.
+//
 func For2023TestFollowerFailure2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
@@ -226,7 +230,9 @@ func For2023TestFollowerFailure2B(t *testing.T) {
 	cfg.end()
 }
 
+//
 // test just failure of leaders.
+//
 func For2023TestLeaderFailure2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
@@ -266,8 +272,10 @@ func For2023TestLeaderFailure2B(t *testing.T) {
 	cfg.end()
 }
 
+//
 // test that a follower participates after
 // disconnect and re-connect.
+//
 func TestFailAgree2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
@@ -467,39 +475,27 @@ func TestRejoin2B(t *testing.T) {
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect(leader1)
 
-	fmt.Printf("leader1 = %d\n", leader1)
-	fmt.Printf("pos1\n")
 	// make old leader try to agree on some entries
 	cfg.rafts[leader1].Start(102)
 	cfg.rafts[leader1].Start(103)
 	cfg.rafts[leader1].Start(104)
 
-	fmt.Printf("pos2\n")
 	// new leader commits, also for index=2
 	cfg.one(103, 2, true)
 
-	fmt.Printf("pos3\n")
 	// new leader network failure
 	leader2 := cfg.checkOneLeader()
 	cfg.disconnect(leader2)
 
-	fmt.Printf("leader2 = %d\n", leader2)
-
-	fmt.Printf("pos4\n")
 	// old leader connected again
 	cfg.connect(leader1)
 
-	fmt.Printf("pos5\n")
 	cfg.one(104, 2, true)
 
-	fmt.Printf("pos6\n")
 	// all together now
 	cfg.connect(leader2)
 
-	fmt.Printf("pos7\n")
 	cfg.one(105, servers, true)
-
-	fmt.Printf("pos8\n")
 
 	cfg.end()
 }
@@ -808,6 +804,7 @@ func TestPersist32C(t *testing.T) {
 	cfg.end()
 }
 
+//
 // Test the scenarios described in Figure 8 of the extended Raft paper. Each
 // iteration asks a leader, if there is one, to insert a command in the Raft
 // log.  If there is a leader, that leader will fail quickly with a high
@@ -816,6 +813,7 @@ func TestPersist32C(t *testing.T) {
 // alive servers isn't enough to form a majority, perhaps start a new server.
 // The leader in a new term may try to finish replicating log entries that
 // haven't been committed yet.
+//
 func TestFigure82C(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false, false)
@@ -1196,9 +1194,11 @@ func TestSnapshotInstallUnCrash2D(t *testing.T) {
 	snapcommon(t, "Test (2D): install snapshots (unreliable+crash)", false, false, true)
 }
 
+//
 // do the servers persist the snapshots, and
 // restart using snapshot along with the
 // tail of the log?
+//
 func TestSnapshotAllCrash2D(t *testing.T) {
 	servers := 3
 	iters := 5
