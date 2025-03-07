@@ -259,20 +259,17 @@ func (rf *Raft) AppendEntries(req *AppendEntriesRequest, resp *AppendEntriesResp
 	if req.Term > rf.term {
 		rf.downgrade(req.Term)
 	}
-	lastLogIndex := len(rf.log) - 1
-	if len(rf.log) <= req.PrevLogIndex {
-		resp.XLen = len(rf.log)
-		resp.XTerm = -1
-		return
-	}
 
-	if rf.log[req.PrevLogIndex].Term != req.PrevLogTerm {
-		resp.XLen = lastLogIndex + 1
-		resp.XTerm = rf.log[req.PrevLogIndex].Term
+	if req.PrevLogIndex >= len(rf.log) {
+		resp.XTerm = -1
+		resp.XLen = len(rf.log)
+		return
+	} else if req.PrevLogTerm != rf.log[req.PrevLogIndex].Term {
 		index := req.PrevLogIndex
 		for ; index > rf.commitIndex && rf.log[index].Term == rf.log[req.PrevLogIndex].Term; {
 			index--
 		}
+		resp.XTerm = rf.log[req.PrevLogIndex].Term
 		resp.XIndex = index + 1
 		return
 	}
@@ -356,6 +353,7 @@ func (rf *Raft) replicate(term int) {
 				rf.matchIndex[server] = req.PrevLogIndex + len(req.Entries)
 				rf.nextIndex[server] = rf.matchIndex[server] + 1
 				rf.commit()
+				return
 			} 
 
 			if resp.Term > req.Term {
@@ -364,22 +362,22 @@ func (rf *Raft) replicate(term int) {
 				return
 			}
 
-			if resp.Term == rf.term && rf.state == leader {
+			{
 				if resp.XTerm == -1 {
 					rf.nextIndex[server] = resp.XLen
-					return
-				}
-
-				index := rf.nextIndex[server] - 1
-				for index > 0 && rf.log[index].Term > resp.XTerm {
-					index--
-				}
-				if rf.log[index].Term == resp.XTerm {
-					rf.nextIndex[server] = index + 1
 				} else {
-					rf.nextIndex[server] = resp.XIndex
+					index := req.PrevLogIndex
+					for ; rf.log[index].Term > resp.XTerm && index > 0; {
+						index--
+					}
+					if rf.log[index].Term == resp.XTerm {
+						rf.nextIndex[server] = index + 1
+					} else {
+						rf.nextIndex[server] = resp.XIndex
+					}
 				}
 			}
+
 		}(server)
 	}
 }
@@ -556,6 +554,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.readPersist(persister.ReadRaftState())
 	for server := 0; server < len(rf.peers); server++ {
 		rf.nextIndex[server] = len(rf.log)
+		rf.matchIndex[server] = 0
 	}
 
 	// start ticker goroutine to start elections
