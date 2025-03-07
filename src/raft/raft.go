@@ -219,7 +219,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.VoteGranted = true
 			rf.votefor = args.CandidateId
 			rf.state = follower
-			rf.resetHeartBeaten()
+			rf.resetElectionTime()
 			rf.persist()
 		} else {
 			reply.VoteGranted = false
@@ -267,7 +267,7 @@ func (rf *Raft) AppendEntries(req *AppendEntriesRequest, resp *AppendEntriesResp
 		return
 	}
 
-	rf.resetSendHeartBeaten()
+	rf.resetElectionTime()
 	if req.Term > rf.term {
 		rf.downgrade(req.Term)
 	}
@@ -320,6 +320,19 @@ func (rf *Raft) commit() {
 			rf.commitIndex = i
 			break
 		}
+	}
+}
+
+func (rf *Raft) StartReplicate() {
+	for !rf.killed() {
+		rf.mu.Lock()
+		if rf.state != leader {
+			rf.mu.Unlock()
+			return
+		}
+		go rf.replicate(rf.term)
+		rf.mu.Unlock()
+		time.Sleep(time.Millisecond * 150)
 	}
 }
 
@@ -439,7 +452,6 @@ func (rf *Raft) applier() {
 			}
 			appliedMsg = append(appliedMsg, msg)
 		}
-		rf.resetAppliedTime()
 		rf.mu.Unlock()
 		for _, msg := range appliedMsg {
 			rf.applyCh <- msg
@@ -455,21 +467,9 @@ func (rf *Raft) ticker() {
 		// be started and to randomize sleeping time using
 		// time.Sleep().
 		rf.mu.Lock()
-		if rf.state == follower {
-			if time.Since(rf.lastHeartBeaten) > rf.lastHeartBeatenTimeOut {
-				rf.state = candidate
-			}
-		}
-		if rf.state == candidate {
+		if rf.state != leader {
 			if time.Since(rf.lastElectionTime) > rf.lastElectionTimeOut {
 				go rf.leaderelection()
-				rf.resetElectionTime()
-			}
-		}
-		if rf.state == leader {
-			if time.Since(rf.lastAppendEntries) > rf.lastAppendEntriesTimeOut {
-				go rf.replicate(rf.term)
-				rf.resetAppendEntriesTime()
 			}
 		}
 		rf.mu.Unlock()
@@ -477,29 +477,9 @@ func (rf *Raft) ticker() {
 	}
 }
 
-func (rf *Raft) resetHeartBeaten() {
-	rf.lastHeartBeaten = time.Now()
-	rf.lastHeartBeatenTimeOut = time.Duration(rand.Intn(150)+200) * time.Millisecond
-}
-
-func (rf *Raft) resetSendHeartBeaten() {
-	rf.lastSendHeartBeaten = time.Now()
-	rf.lastSendHeartBeatenTimeOut = time.Duration(100) * time.Millisecond
-}
-
 func (rf *Raft) resetElectionTime() {
 	rf.lastElectionTime = time.Now()
-	rf.lastElectionTimeOut = time.Duration(rand.Intn(300)+300) * time.Millisecond
-}
-
-func (rf *Raft) resetAppendEntriesTime() {
-	rf.lastAppendEntries = time.Now()
-	rf.lastAppendEntriesTimeOut = time.Duration(100) * time.Millisecond // to modify
-}
-
-func (rf *Raft) resetAppliedTime() {
-	rf.lastAppliedTime = time.Now()
-	rf.lastAppliedTimeOut = time.Duration(100) * time.Millisecond
+	rf.lastElectionTimeOut = time.Duration(rand.Intn(150)+300) * time.Millisecond
 }
 
 func (rf *Raft) leaderelection() {
@@ -536,7 +516,7 @@ func (rf *Raft) leaderelection() {
 								rf.nextIndex[server] = len(rf.log)
 								rf.matchIndex[server] = 0
 							}
-							go rf.replicate(rf.term)
+							go rf.StartReplicate()
 						}
 					}
 					rf.mu.Unlock()
@@ -571,10 +551,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = follower
 
 	rf.resetElectionTime()
-	rf.resetHeartBeaten()
-	rf.resetSendHeartBeaten()
-	rf.resetAppendEntriesTime()
-	rf.resetAppliedTime()
 	rf.votefor = -1
 
 	rf.commitIndex = 0
@@ -595,7 +571,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
-
 	go rf.applier()
 
 	return rf

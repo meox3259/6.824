@@ -879,7 +879,6 @@ func TestUnreliableAgree2C(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	fmt.Printf("start0\n")
 	for iters := 1; iters < 50; iters++ {
 		for j := 0; j < 4; j++ {
 			wg.Add(1)
@@ -895,7 +894,6 @@ func TestUnreliableAgree2C(t *testing.T) {
 
 	wg.Wait()
 
-	fmt.Printf("start1\n")
 	cfg.one(100, servers, true)
 
 	cfg.end()
