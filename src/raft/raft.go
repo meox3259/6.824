@@ -362,7 +362,7 @@ func (rf *Raft) replicate(term int) {
 				return
 			}
 
-			{
+			if resp.Term == rf.term {
 				if resp.XTerm == -1 {
 					rf.nextIndex[server] = resp.XLen
 				} else {
