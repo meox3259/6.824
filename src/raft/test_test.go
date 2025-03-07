@@ -883,7 +883,6 @@ func TestUnreliableAgree2C(t *testing.T) {
 	for iters := 1; iters < 50; iters++ {
 		for j := 0; j < 4; j++ {
 			wg.Add(1)
-			fmt.Printf("iters = %d j = %d\n", iters, j)
 			go func(iters, j int) {
 				defer wg.Done()
 				cfg.one((100*iters)+j, 1, true)
