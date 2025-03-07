@@ -79,21 +79,6 @@ type Raft struct {
 	term  int
 	state int
 
-	lastHeartBeaten        time.Time
-	lastHeartBeatenTimeOut time.Duration
-
-	lastElectionTime    time.Time
-	lastElectionTimeOut time.Duration
-
-	lastSendHeartBeaten        time.Time
-	lastSendHeartBeatenTimeOut time.Duration
-
-	lastAppendEntries        time.Time
-	lastAppendEntriesTimeOut time.Duration
-
-	lastAppliedTime    time.Time
-	lastAppliedTimeOut time.Duration
-
 	votefor int
 
 	/*-------2B----------*/
@@ -470,6 +455,7 @@ func (rf *Raft) ticker() {
 		if rf.state != leader {
 			if time.Since(rf.lastElectionTime) > rf.lastElectionTimeOut {
 				go rf.leaderelection()
+				rf.resetElectionTime()
 			}
 		}
 		rf.mu.Unlock()
