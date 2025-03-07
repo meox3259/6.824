@@ -79,6 +79,9 @@ type Raft struct {
 	term  int
 	state int
 
+	lastElectionTime    time.Time
+	lastElectionTimeOut time.Duration
+
 	votefor int
 
 	/*-------2B----------*/
