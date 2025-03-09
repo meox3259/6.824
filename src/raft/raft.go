@@ -117,20 +117,14 @@ func (rf *Raft) persist() {
 	e.Encode(rf.lastIncludedIndex)
 	e.Encode(rf.lastIncludedTerm)
 	data := w.Bytes()
-	if rf.snapshot == nil {
-		DPrintf("server %v 保存快照失败: 无快照\n", rf.me)
-		return
-	}
 	rf.persister.Save(data, rf.snapshot)
 }
 
 func (rf *Raft) readSnapShot(data []byte) {
 	if len(data) == 0 {
-		DPrintf("server %v 读取快照失败: 无快照\n", rf.me)
 		return
 	}
 	rf.snapshot = data
-	DPrintf("server %v 读取快照c成功\n", rf.me)
 }
 
 // restore previously persisted state.
@@ -261,7 +255,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
 	rf.log = rf.log[rf.GetVirtualLogIndex(index):]
 
 	rf.lastIncludedIndex = index
@@ -393,11 +386,12 @@ func (rf *Raft) AppendEntries(req *AppendEntriesRequest, resp *AppendEntriesResp
 	}
 
 	resp.Success = true
-	if len(req.Entries) != 0 && len(rf.log) + rf.lastIncludedIndex > req.PrevLogIndex + 1 {
+	if len(req.Entries) != 0 && rf.GetRealLogIndex(len(rf.log)) > req.PrevLogIndex + 1 {
 		rf.log = rf.log[:rf.GetVirtualLogIndex(req.PrevLogIndex)+1]
 	}
 
 	rf.log = append(rf.log, req.Entries...)
+	rf.persist()
 	if req.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = Min(req.LeaderCommit, rf.GetRealLogIndex(len(rf.log) - 1))
 	}
@@ -483,13 +477,12 @@ func (rf *Raft) replicate(term int) {
 				}
 			} else {
 				rf.mu.Lock()
-			//	fmt.Printf("server %v 发送心跳: %v 到server: %v lastIncludedIndex: %v\n", rf.me, rf.nextIndex[server], server, rf.lastIncludedIndex)
 				req := AppendEntriesRequest{
 					Term:         term,
 					LeaderId:     rf.me,
 					PrevLogIndex: rf.nextIndex[server] - 1,
 					PrevLogTerm:  rf.log[rf.GetVirtualLogIndex(rf.nextIndex[server]-1)].Term,
-					Entries:      rf.log[rf.GetVirtualLogIndex(rf.nextIndex[server]):], // copy the entries to the next index
+					Entries:      rf.log[rf.GetVirtualLogIndex(rf.nextIndex[server]):],
 					LeaderCommit: rf.commitIndex,
 					IsHeartBeat:  false,
 				}
@@ -590,7 +583,6 @@ func (rf *Raft) applier() {
 			if rf.lastApplied <= rf.lastIncludedIndex {
 				continue
 			}
-	//		fmt.Printf("server %v 应用日志: %v 虚拟日志: %v\n", rf.me, rf.lastApplied, rf.GetVirtualLogIndex(rf.lastApplied))
 			msg := ApplyMsg{
 				CommandValid: true,
 				CommandIndex: rf.lastApplied,
@@ -626,7 +618,7 @@ func (rf *Raft) ticker() {
 
 func (rf *Raft) resetElectionTime() {
 	rf.lastElectionTime = time.Now()
-	rf.lastElectionTimeOut = time.Duration(rand.Intn(150)+300) * time.Millisecond
+	rf.lastElectionTimeOut = time.Duration(rand.Intn(300)+450) * time.Millisecond
 }
 
 func (rf *Raft) leaderelection() {
@@ -714,7 +706,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.snapshot = nil
 
 	// initialize from state persisted before a crash
-	rf.persister = persister
 	rf.readPersist(persister.ReadRaftState())
 	rf.readSnapShot(persister.ReadSnapshot())
 	for server := 0; server < len(rf.peers); server++ {
